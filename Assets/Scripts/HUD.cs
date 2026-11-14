@@ -749,6 +749,12 @@ public class HUD : MonoBehaviour
                  + (b.isDropoff ? "\n卸货点" : "")
                  + (b.isCommandCenter ? "\n指挥中心 —— 被摧毁即失败" : "");
 
+            // A finished tower also reports the range it really covers: its own 5.5
+            // minimum, or the garrisoned archer's longer reach.
+            var tower = b.GetComponent<TowerGarrison>();
+            if (tower != null && !b.IsUnderConstruction)
+                body += "\n防御射程 " + tower.ActiveRange.ToString("0.#");
+
             // Gated on the button: until Phase 2 wires repairButton this is null, so the
             // shipped panel reads exactly as before. The line is shown for a friendly,
             // finished, non-neutral building — the same set where the button appears.

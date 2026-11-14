@@ -27,9 +27,8 @@ public class GameState : MonoBehaviour
     [Tooltip("多久检查一次胜负。")]
     public float checkInterval = 0.5f;
 
-    [Tooltip("团灭判负线：余钱低于这个数就算无法翻盘。用建造栏最便宜的建筑（民房 50）。\n" +
-             "真实对局里优先读 HUD 建造表的最低价；这里只是没有 HUD 时的兜底（回归场景）。")]
-    public int recoveryGoldFloor = 50;
+    [Tooltip("无 HUD 时的团灭恢复金线。没有主基地时只有主基地能直接放置；当前 Castle 为 300 金。")]
+    public int recoveryGoldFloor = 300;
 
     public Outcome Result { get; private set; } = Outcome.Playing;
     public bool IsOver => Result != Outcome.Playing;
@@ -205,7 +204,15 @@ public class GameState : MonoBehaviour
                 foreach (var p in hud.buildPrefabs)
                 {
                     var b = p != null ? p.GetComponent<Building>() : null;
-                    if (b != null && eco.CanAfford(b.cost)) return true;
+                    if (b == null || !eco.CanAfford(b.cost)) continue;
+                    if (b.isCommandCenter)
+                    {
+                        if (!Building.HasLivingCommandCentre(team)) return true;
+                    }
+                    else if (Building.HasCompletedCommandCentre(team))
+                    {
+                        return true;
+                    }
                 }
                 return false;
             }

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 /// <summary>Why a sheep did or did not take a step. Tests assert on the reason, so a
@@ -55,6 +56,22 @@ public class SheepWander : MonoBehaviour
     /// <summary>True from the first frame of a step until the footprint is recomputed
     /// at the destination.</summary>
     public bool IsWalking { get; private set; }
+
+    /// <summary>
+    /// 保存中途步伐时回到仍登记在 Building.Cells 中的最后完整占地。
+    /// 不推进实时对象，也不把半格 transform 写入存档。
+    /// </summary>
+    public Vector3 StableSavePosition
+    {
+        get
+        {
+            if (!IsWalking || building == null || building.Cells.Count == 0)
+                return transform.position;
+            int minX = building.Cells.Min(c => c.x);
+            int minY = building.Cells.Min(c => c.y);
+            return new Vector3(minX + building.Width * 0.5f, minY, transform.position.z);
+        }
+    }
 
     /// <summary>The reason for the most recent <see cref="TryStep"/>.</summary>
     public SheepStepResult LastStepResult { get; private set; }

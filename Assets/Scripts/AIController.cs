@@ -238,10 +238,15 @@ public class AIController : MonoBehaviour
     public bool CanStillRecover()
     {
         if (buildOrder == null) return false;
-        for (int i = 0; i < buildOrder.Length; i++)
+        for (int i = nextBuild; i < buildOrder.Length; i++)
         {
-            var b = buildOrder[i] != null ? buildOrder[i].GetComponent<Building>() : null;
-            if (b != null && CanAfford(b.cost)) return true;
+            var prefab = buildOrder[i];
+            if (prefab == null) continue;  // Build() 会在后续 tick 跳过 null
+            var b = prefab.GetComponent<Building>();
+            if (b == null) continue;       // Build() 同样会跳过缺 Building 的条目
+            if (!CanAfford(b.cost)) return false;
+            if (b.isCommandCenter) return !Building.HasLivingCommandCentre(team);
+            return Building.HasCompletedCommandCentre(team);
         }
         return false;
     }

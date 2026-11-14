@@ -105,6 +105,8 @@ public class Minimap : MonoBehaviour, IPointerClickHandler
     public void OnPointerClick(PointerEventData eventData)
     {
         if (eventData.button != PointerEventData.InputButton.Left) return;
+        if (PauseMenu.IsAnyOpen) return;
+        if (GameState.Instance != null && GameState.Instance.IsOver) return;
         if (mainCamera == null || rtsCamera == null || imageRect == null) return;
         if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
                 imageRect, eventData.position, eventData.pressEventCamera, out Vector2 local)) return;

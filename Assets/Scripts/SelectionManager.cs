@@ -97,6 +97,7 @@ public class SelectionManager : MonoBehaviour
     Sprite blockedSprite;
     Texture2D white;
     readonly List<GameObject> rings = new List<GameObject>();
+    readonly List<AttackRangeIndicator> rangeIndicators = new List<AttackRangeIndicator>();
     readonly List<Marker> markers = new List<Marker>();
     readonly List<Collider2D> overlapBuf = new List<Collider2D>(32);
     ContactFilter2D selectFilter;
@@ -106,6 +107,10 @@ public class SelectionManager : MonoBehaviour
 
     const float MarkerLifetime = 0.7f;
     const float DragThreshold = 8f;
+
+    static readonly Color FriendlyRangeTint = new Color(0.35f, 0.65f, 1f, 0.85f);
+    static readonly Color EnemyRangeTint = new Color(1f, 0.35f, 0.35f, 0.85f);
+    static readonly Color NeutralRangeTint = new Color(1f, 0.82f, 0.25f, 0.85f);
 
     class Marker
     {
@@ -962,6 +967,78 @@ public class SelectionManager : MonoBehaviour
             rings[i].transform.position = pos;
             // Just behind the unit it belongs to, and Y-sorted like everything else.
             rings[i].GetComponent<SpriteRenderer>().sortingOrder = YSort.OrderFor(pos.y) - 1;
+        }
+        UpdateAttackRangeRings();
+    }
+
+    /// <summary>Rings behind the selection ellipses: one per selected living unit
+    /// (its own attack range) and one for a selected finished tower (its active
+    /// range). The pool only grows when the selection needs more rings and hides
+    /// the surplus instead of destroying it, so a changing selection never
+    /// allocates per frame.</summary>
+    void UpdateAttackRangeRings()
+    {
+        var building = selectedBuilding;
+        var tower = building != null ? building.GetComponent<TowerGarrison>() : null;
+        bool showTowerRing = tower != null && building.IsAlive && !building.IsUnderConstruction;
+
+        // Size the pool to what this frame needs, growing at most once per frame.
+        int needed = 0;
+        for (int i = 0; i < selected.Count; i++)
+        {
+            var u = selected[i];
+            if (u == null || !IsLiving(u)) continue;
+            if (u.GetComponent<UnitActor>() != null) needed++;
+        }
+        if (showTowerRing) needed++;
+        if (rangeIndicators.Count < needed)
+        {
+            int grow = needed - rangeIndicators.Count;
+            for (int i = 0; i < grow; i++)
+                rangeIndicators.Add(AttackRangeIndicator.Create(transform));
+        }
+
+        int used = 0;
+        for (int i = 0; i < selected.Count; i++)
+        {
+            var u = selected[i];
+            if (u == null || !IsLiving(u)) continue;
+            var actor = u.GetComponent<UnitActor>();
+            if (actor == null) continue;
+            ShowRangeRing(used++, u.transform.position,
+                Mathf.Max(0.1f, actor.attackRange), RangeTint(actor.team));
+        }
+        if (showTowerRing)
+        {
+            ShowRangeRing(used++, building.transform.position,
+                Mathf.Max(0.1f, tower.ActiveRange), RangeTint(building.team));
+        }
+
+        for (int i = used; i < rangeIndicators.Count; i++)
+        {
+            var ring = rangeIndicators[i];
+            if (ring != null && ring.IsVisible) ring.Hide();
+        }
+    }
+
+    void ShowRangeRing(int index, Vector3 center, float radius, Color tint)
+    {
+        var ring = rangeIndicators[index];
+        if (ring == null)
+        {
+            ring = AttackRangeIndicator.Create(transform);
+            rangeIndicators[index] = ring;
+        }
+        ring.Show(center, radius, tint, YSort.OrderFor(center.y) - 2);
+    }
+
+    static Color RangeTint(Team team)
+    {
+        switch (team)
+        {
+            case Team.Blue: return FriendlyRangeTint;
+            case Team.Red: return EnemyRangeTint;
+            default: return NeutralRangeTint;
         }
     }
 

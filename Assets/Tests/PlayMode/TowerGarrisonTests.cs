@@ -180,6 +180,32 @@ public class TowerGarrisonTests : RegressionFixture
             "The archer sprite must face the target on its left.");
     }
 
+    // ------------------------------------------------------------ defense range
+
+    [UnityTest]
+    public IEnumerator DefenseRange_IsFivePointFive_AndFiresAtFiveButNotSix()
+    {
+        PaintRect(-10, -8, 28, 24);
+        var tower = SpawnTower(new Vector3Int(3, 3));
+        var archer = SpawnArcher(new Vector3Int(-3, -3));
+        yield return null;
+        var garrison = tower.GetComponent<TowerGarrison>();
+        Assert.AreEqual(5.5f, garrison.defenseRange, 0.001f);
+        Assert.AreEqual(5.5f, garrison.ActiveRange, 0.001f);
+        Assert.IsTrue(garrison.Garrison(archer.GetComponent<UnitActor>()));
+        Assert.AreEqual(5.5f, garrison.ActiveRange, 0.001f);
+
+        var farMiss = SpawnEnemy(new Vector3Int(-3, 3));   // distance 6.0
+        yield return new WaitForSeconds(0.35f);
+        Assert.IsNull(FindProjectile(), "A target at 6.0 must stay outside the 5.5 tower range.");
+        UnityEngine.Object.Destroy(farMiss.gameObject);
+        yield return null;
+
+        SpawnEnemy(new Vector3Int(-2, 3));                 // distance 5.0
+        yield return WaitUntil(() => FindProjectile() != null, 2f);
+        Assert.IsNotNull(FindProjectile(), "A target at 5.0 must now be inside the 5.5 range.");
+    }
+
     // ------------------------------------------------------------- ungarrison
 
     [UnityTest]

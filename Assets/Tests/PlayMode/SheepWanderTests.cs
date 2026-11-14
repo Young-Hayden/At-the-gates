@@ -547,6 +547,78 @@ public class SheepWanderTests : RegressionFixture
     }
 
     [UnityTest]
+    public IEnumerator SaveLoad_MidStep_RewindsToLastRegisteredFootprint()
+    {
+        yield return LoadSampleScene();
+        foreach (var ai in Object.FindObjectsByType<AIController>(FindObjectsSortMode.None))
+            ai.active = false;
+        foreach (var g in Gatherer.All.ToArray())
+            if (g != null) g.enabled = false;
+
+        var sheep = FindSheep("Sheep_Meat_1");
+        var wander = sheep.GetComponent<SheepWander>();
+        var building = sheep.GetComponent<Building>();
+        var node = sheep.GetComponent<ResourceNode>();
+        wander.autoWander = false;
+        wander.stepSeconds = 1f;
+        Assert.AreEqual(SheepStepResult.Moved,
+            wander.TryStep(wander.CurrentCell + Vector3Int.right));
+
+        Time.timeScale = 0f;
+        typeof(SheepWander).GetMethod("AdvanceWalk",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            .Invoke(wander, new object[] { 0.25f });
+        Assert.IsTrue(wander.IsWalking);
+        Assert.AreNotEqual(0f, sheep.transform.position.x % 1f);
+
+        var expectedCells = building.Cells.ToArray();
+        float expectedX = expectedCells.Min(c => c.x) + building.Width * 0.5f;
+        float expectedY = expectedCells.Min(c => c.y);
+        int expectedAmount = node.amount - 7;
+        node.Harvest(7);
+
+        var snapshot = SaveGameService.CaptureSnapshot(out string captureError);
+        Assert.IsNotNull(snapshot, captureError);
+        var record = snapshot.buildings.Single(r => r.objectName == "Sheep_Meat_1");
+        Assert.AreEqual(expectedX, record.position.x, 0.0001f,
+            "保存记录必须回到仍登记在 Building.Cells 中的稳定原点，而不是半格插值。");
+        Assert.AreEqual(expectedY, record.position.y, 0.0001f);
+
+        string path = Path.Combine(Application.temporaryCachePath,
+            "atg_midstep_stable_footprint.json");
+        try
+        {
+            Assert.IsTrue(SaveGameService.SaveToPath(snapshot, path, out string writeError), writeError);
+            Assert.IsTrue(SaveGameService.TryReadFromPath(path, out var loaded, out string readError), readError);
+            bool restored = false;
+            string restoreError = null;
+            yield return SaveGameService.RestoreSnapshot(loaded, (ok, error) =>
+            {
+                restored = ok;
+                restoreError = error;
+            });
+            Assert.IsTrue(restored, restoreError);
+
+            var after = FindSheep("Sheep_Meat_1");
+            var afterWander = after.GetComponent<SheepWander>();
+            var afterBuilding = after.GetComponent<Building>();
+            Assert.IsFalse(afterWander.IsWalking);
+            Assert.AreEqual(expectedX, after.transform.position.x, 0.0001f);
+            Assert.AreEqual(expectedY, after.transform.position.y, 0.0001f);
+            CollectionAssert.AreEquivalent(expectedCells, afterBuilding.Cells.ToArray());
+            Assert.AreEqual(expectedAmount, after.GetComponent<ResourceNode>().amount);
+            foreach (var cell in expectedCells)
+                Assert.IsTrue(MapGrid.Instance.IsBlockedByBuilding(cell));
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path + ".tmp")) File.Delete(path + ".tmp");
+            if (File.Exists(path + ".bak")) File.Delete(path + ".bak");
+        }
+    }
+
+    [UnityTest]
     public IEnumerator Animator_SwitchesToWalk_WhileStepping_AndBackToIdle()
     {
         yield return LoadSampleScene();

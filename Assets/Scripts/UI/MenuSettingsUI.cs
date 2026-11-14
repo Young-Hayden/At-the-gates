@@ -24,19 +24,12 @@ public class MenuSettingsUI : MonoBehaviour
 
     void Awake()
     {
+        ConfigureFixedDisplay();
         GameSettings.ApplyDisplay();
         if (openButton != null) openButton.onClick.AddListener(Open);
         if (closeButton != null) closeButton.onClick.AddListener(Close);
         if (resetButton != null) resetButton.onClick.AddListener(ResetToDefaults);
-        if (fullscreenButton != null) fullscreenButton.onClick.AddListener(ToggleFullscreen);
         if (edgePanButton != null) edgePanButton.onClick.AddListener(ToggleEdgePan);
-
-        for (int i = 0; i < resolutionButtons.Length; i++)
-        {
-            int index = i;
-            if (resolutionButtons[i] != null)
-                resolutionButtons[i].onClick.AddListener(() => SetResolution(index));
-        }
 
         if (panSpeedSlider != null)
         {
@@ -48,6 +41,34 @@ public class MenuSettingsUI : MonoBehaviour
 
         Refresh();
         if (panel != null) panel.SetActive(false);
+    }
+
+    /// <summary>The display is fixed at 2560×1440 fullscreen window: keep the first
+    /// resolution button as a non-interactive readout, hide the rest, and lock the
+    /// fullscreen button.</summary>
+    void ConfigureFixedDisplay()
+    {
+        for (int i = 0; i < resolutionButtons.Length; i++)
+        {
+            var button = resolutionButtons[i];
+            if (button == null) continue;
+            if (i == 0)
+            {
+                button.gameObject.SetActive(true);
+                button.interactable = false;
+                var label = button.GetComponentInChildren<Text>();
+                if (label != null)
+                {
+                    label.text = GameSettings.FixedResolutionText;
+                    label.color = selectedTint;
+                }
+            }
+            else button.gameObject.SetActive(false);
+        }
+
+        if (fullscreenButton != null) fullscreenButton.interactable = false;
+        if (fullscreenLabel != null)
+            fullscreenLabel.text = "全屏：固定 " + GameSettings.FixedResolutionText;
     }
 
     public void Open()
@@ -75,20 +96,6 @@ public class MenuSettingsUI : MonoBehaviour
             UnityEngine.EventSystems.EventSystem.current.SetSelectedGameObject(openButton.gameObject);
     }
 
-    public void SetResolution(int index)
-    {
-        GameSettings.ResolutionIndex = index;
-        GameSettings.ApplyDisplay();
-        Refresh();
-    }
-
-    public void ToggleFullscreen()
-    {
-        GameSettings.Fullscreen = !GameSettings.Fullscreen;
-        GameSettings.ApplyDisplay();
-        Refresh();
-    }
-
     public void ToggleEdgePan()
     {
         GameSettings.EdgePan = !GameSettings.EdgePan;
@@ -110,11 +117,6 @@ public class MenuSettingsUI : MonoBehaviour
 
     void Refresh()
     {
-        for (int i = 0; i < resolutionButtons.Length; i++)
-            if (resolutionButtons[i] != null && resolutionButtons[i].image != null)
-                resolutionButtons[i].image.color = i == GameSettings.ResolutionIndex ? selectedTint : normalTint;
-
-        if (fullscreenLabel != null) fullscreenLabel.text = GameSettings.Fullscreen ? "全屏：开" : "全屏：关";
         if (edgePanLabel != null) edgePanLabel.text = GameSettings.EdgePan ? "边缘平移：开" : "边缘平移：关";
         if (panSpeedSlider != null) panSpeedSlider.SetValueWithoutNotify(GameSettings.PanSpeed);
         if (panSpeedValue != null) panSpeedValue.text = Mathf.RoundToInt(GameSettings.PanSpeed).ToString();

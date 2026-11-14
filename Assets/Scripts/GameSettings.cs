@@ -1,34 +1,19 @@
 using UnityEngine;
 
 /// <summary>Small persisted settings store shared by the menu and the RTS camera.
-/// Display changes are deliberately ignored in the editor so they cannot resize the
+/// The game ships at one fixed display mode: 2560×1440 in a borderless fullscreen
+/// window. Only edge panning and pan speed remain user-configurable. Display
+/// changes are deliberately ignored in the editor so they cannot resize the
 /// user's editor window; standalone players apply them immediately.</summary>
 public static class GameSettings
 {
-    const string ResolutionKey = "rts.resolution";
-    const string FullscreenKey = "rts.fullscreen";
     const string EdgePanKey = "rts.edgePan";
     const string PanSpeedKey = "rts.panSpeed";
 
-    public static int ResolutionIndex
-    {
-        get => PlayerPrefs.GetInt(ResolutionKey, 2);
-        set
-        {
-            PlayerPrefs.SetInt(ResolutionKey, Mathf.Clamp(value, 0, 2));
-            PlayerPrefs.Save();
-        }
-    }
-
-    public static bool Fullscreen
-    {
-        get => PlayerPrefs.GetInt(FullscreenKey, 1) != 0;
-        set
-        {
-            PlayerPrefs.SetInt(FullscreenKey, value ? 1 : 0);
-            PlayerPrefs.Save();
-        }
-    }
+    public const int FixedWidth = 2560;
+    public const int FixedHeight = 1440;
+    public const string FixedResolutionText = "2560×1440";
+    public const FullScreenMode FixedFullscreenMode = FullScreenMode.FullScreenWindow;
 
     public static bool EdgePan
     {
@@ -53,14 +38,7 @@ public static class GameSettings
     public static void ApplyDisplay()
     {
         if (Application.isEditor) return;
-        int width, height;
-        switch (ResolutionIndex)
-        {
-            case 0: width = 1280; height = 720; break;
-            case 1: width = 1600; height = 900; break;
-            default: width = 1920; height = 1080; break;
-        }
-        Screen.SetResolution(width, height, Fullscreen);
+        Screen.SetResolution(FixedWidth, FixedHeight, FixedFullscreenMode);
     }
 
     public static void ApplyCamera(RTSCamera camera)
@@ -72,8 +50,6 @@ public static class GameSettings
 
     public static void ResetToDefaults()
     {
-        ResolutionIndex = 2;
-        Fullscreen = true;
         EdgePan = true;
         PanSpeed = 18f;
     }

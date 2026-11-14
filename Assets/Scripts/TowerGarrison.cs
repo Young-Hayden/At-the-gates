@@ -11,6 +11,14 @@ public class TowerGarrison : MonoBehaviour
     public bool HasArcher { get; private set; }
     public UnitActor Archer => archer;
 
+    /// <summary>Range the tower actually covers right now: the garrisoned archer's
+    /// range when manned, otherwise the tower's own defensive minimum.</summary>
+    public float ActiveRange => HasArcher ? range : defenseRange;
+
+    [Header("防御")]
+    [Tooltip("完成建造的塔自身最低防御射程；驻塔弓手更高时取弓手射程。")]
+    public float defenseRange = 5.5f;
+
     [Header("驻塔表现")]
     [Tooltip("Archer position relative to the tower root while garrisoned.")]
     public Vector2 garrisonLocalOffset = new Vector2(0f, 2.0f);
@@ -78,7 +86,7 @@ public class TowerGarrison : MonoBehaviour
         if (candidate.projectile == null || candidate.team != building.team) return false;
 
         archer = candidate;
-        range = candidate.attackRange;
+        range = Mathf.Max(defenseRange, candidate.attackRange);
         cooldown = Mathf.Max(0.05f, candidate.attackCooldown);
         projectile = candidate.projectile;
         projectileSpeed = candidate.projectileSpeed;

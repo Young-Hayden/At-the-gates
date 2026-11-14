@@ -218,6 +218,9 @@ public static class SaveGameService
                     actor = tower.Archer.CaptureSaveState(),
                 };
             }
+            var wanderingSheep = b.GetComponent<SheepWander>();
+            if (wanderingSheep != null && wanderingSheep.IsWalking)
+                record.position = wanderingSheep.StableSavePosition;
             data.buildings.Add(record);
         }
 
