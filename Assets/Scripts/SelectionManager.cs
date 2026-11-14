@@ -1029,7 +1029,7 @@ public class SelectionManager : MonoBehaviour
             ring = AttackRangeIndicator.Create(transform);
             rangeIndicators[index] = ring;
         }
-        ring.Show(center, radius, tint, YSort.OrderFor(center.y) - 2);
+        ring.Show(center, radius, tint, AttackRangeIndicator.GroundSortingOrder);
     }
 
     static Color RangeTint(Team team)

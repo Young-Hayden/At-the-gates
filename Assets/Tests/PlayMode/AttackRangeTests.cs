@@ -71,6 +71,43 @@ public class AttackRangeTests : RegressionFixture
             .Any(r => r.IsVisible));
     }
 
+    [UnityTest]
+    public IEnumerator RangeRing_UsesGroundSpriteRenderer_WithSelectionRingSorting()
+    {
+        PaintRect(-6, -6, 14, 14);
+        var go = new GameObject("Ground ring unit");
+        go.transform.position = new Vector3(1.25f, 2.75f, 0f);
+        go.AddComponent<UnitMover>();
+        var actor = go.AddComponent<UnitActor>();
+        actor.attackRange = 3.2f;
+
+        Selection.selected.Clear();
+        Selection.selectedBuilding = null;
+        Selection.selected.Add(go.GetComponent<UnitMover>());
+        InvokeUpdateRings();
+        yield return null;
+
+        var ring = Object.FindFirstObjectByType<AttackRangeIndicator>();
+        Assert.IsNotNull(ring);
+        Assert.IsNull(ring.GetComponent<LineRenderer>(),
+            "The attack range ring must no longer be a world-space LineRenderer.");
+        var ringRenderer = ring.GetComponent<SpriteRenderer>();
+        Assert.IsNotNull(ringRenderer,
+            "The attack range ring must use SpriteRenderer like the green selection ring.");
+        Assert.AreEqual(3, ringRenderer.sortingOrder,
+            "The whole attack ring must sit in a fixed ground decal order above tilemaps (max order 2).");
+        Assert.Less(ringRenderer.sortingOrder, YSort.OrderFor(go.transform.position.y + 4f),
+            "A YSorted tree above the unit must draw in front of the whole attack ring.");
+
+        var selectionRing = Object.FindObjectsByType<SpriteRenderer>(FindObjectsSortMode.None)
+            .FirstOrDefault(r => r.gameObject.name == "SelectionRing");
+        Assert.IsNotNull(selectionRing, "The green selection ring control must exist.");
+        Assert.AreEqual(selectionRing.sortingLayerID, ringRenderer.sortingLayerID,
+            "Attack and selection rings must share a sorting layer.");
+        Assert.Less(ringRenderer.sortingOrder, selectionRing.sortingOrder,
+            "The attack ring must be under the green selection ring, not merely equal to it.");
+    }
+
     // ---------------------------------------------------------------- helpers
 
     void InvokeUpdateRings()

@@ -58,9 +58,11 @@
 | 图 | 文件 | MD5 |
 |---|---|---|
 | 设置固定项 | `docs/screenshots/rts-2560-settings.png` | `b1f82c05…` |
-| 四兵种范围圈 | `docs/screenshots/rts-attack-ranges-units.png` | `489f6231…` |
-| 8 单位范围圈 | `docs/screenshots/rts-attack-ranges-units8.png` | `1b604476…` |
-| 空箭塔5.5圈 | `docs/screenshots/rts-attack-range-tower.png` | `7ec22c4c…` |
+| 四兵种范围圈 | `docs/screenshots/rts-attack-ranges-units.png` | `53867e4e…` |
+| 8 单位范围圈 | `docs/screenshots/rts-attack-ranges-units8.png` | `26b2e72d…` |
+| 空箭塔5.5圈 | `docs/screenshots/rts-attack-range-tower.png` | `fd36832e…` |
+
+> 后续修正：攻击圈已从 LineRenderer 改为 SpriteRenderer，并固定在 ground decal order 3（低于所有 YSort 单位/树），详见 `2026-11-14-rts-attack-ring-ground-layer-fix.md`；上表截图已更新为修正后效果（该修正尚未推送）。
 
 性能探针（8选中 vs 无选中，各3秒交替两次）：
 
