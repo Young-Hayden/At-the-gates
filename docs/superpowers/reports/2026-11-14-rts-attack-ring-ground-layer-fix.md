@@ -58,4 +58,6 @@
 
 ## 6. 发布状态
 
-本轮未收到新的提交/推送授权。代码、测试、截图均在当前工作区；**未提交、未推送**。
+- D 盘本地功能提交：`476ec43`（`fix: render attack range rings on the ground layer`）。
+- 桌面发布副本功能提交：`b5a0d58`，已推送 GitHub，远程 main 与发布副本 HEAD 均为 `b5a0d58542f2debe3b65a2bbbd65c3a939349894`。
+- 随后仅追加文档状态更新提交；最终线上 HEAD 以 GitHub 文档提交为准。未使用 force push。
