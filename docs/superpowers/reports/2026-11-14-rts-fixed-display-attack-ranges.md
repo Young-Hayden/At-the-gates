@@ -3,7 +3,7 @@
 日期：2026-11-14  
 工程：`D:\Unity\projects\At the Gates`  
 基线：`main@3e5659a` 加此前未提交的 286/286 审计修复与地图精修。  
-状态：**功能与自检完成；待发布确认、本地提交与 GitHub 推送。**
+状态：**功能、自检、本地提交与 GitHub 推送均已完成。**
 
 ## 1. 用户决策
 
@@ -81,9 +81,7 @@ Minor：复审包曾漏附新脚本（已补）、计划旧步骤文案（已修
 
 ## 8. 发布
 
-本地代码与文档已完成；发布前需用户对最终变更摘要做一次确认。确认后：
-
-1. D 盘本地仓库提交；
-2. 同步桌面 `GitHub提交/at-the-gates`；
-3. 提交并推送 `https://github.com/Young-Hayden/At-the-gates`；
-4. API 核对远程 SHA，不使用 force push。
+- D 盘本地提交：`8f420b4`（`feat: add fixed 2560 display and attack range indicators`），工作区提交时干净。
+- 桌面发布副本提交：`7f45d2c`（同标题）。
+- 已推送 GitHub：`https://github.com/Young-Hayden/At-the-gates`，远程 `main` SHA 与发布副本 HEAD 均为 `7f45d2cb9f2d3fd7201d77c46f4b4e6fa541b510`。
+- 直连推送在 send-pack 阶段被重置；使用本机 Clash 代理 `127.0.0.1:7897` 重试成功。未使用 force push。
