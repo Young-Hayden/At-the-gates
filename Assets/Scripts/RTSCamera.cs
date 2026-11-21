@@ -132,7 +132,7 @@ public class RTSCamera : MonoBehaviour
         // --- screen-edge pan (LoL-style mouse control) ---
         Vector2 dir = Vector2.zero;
 
-        if (edgePan && Application.isFocused && !dragging && !modalOpen)
+        if (edgePan && Application.isFocused && !dragging && !modalOpen && !overUI)
         {
             Vector3 m = Input.mousePosition;
             if (m.x >= 0f && m.x < edgeSize) dir.x -= 1f;

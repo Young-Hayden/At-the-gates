@@ -42,6 +42,7 @@ public class BuildingPlacer : MonoBehaviour
     readonly List<Vector3Int> ghostCells = new List<Vector3Int>();
     bool lastValid;
     Vector3Int lastCheckedCell = new Vector3Int(int.MinValue, int.MinValue, 0);
+    float nextValidationTime;
 
     void Awake()
     {
@@ -175,8 +176,12 @@ public class BuildingPlacer : MonoBehaviour
         Vector3Int cell = MapGrid.Instance != null
             ? MapGrid.Instance.WorldToCell(ghost.transform.position)
             : new Vector3Int(int.MinValue, int.MinValue, 0);
-        if (cell == lastCheckedCell) return;
+        if (cell == lastCheckedCell && Time.unscaledTime < nextValidationTime) return;
         lastCheckedCell = cell;
+        // Re-test periodically even when the cursor stays on one cell: the bank can
+        // change (upkeep), or a unit can walk onto the footprint, without moving the
+        // ghost. Without this the preview could stay green while Place() refuses.
+        nextValidationTime = Time.unscaledTime + 0.1f;
         lastValid = Evaluate(ghostBuilding, ghostCells, out var reason);
         LastRefusalReason = reason;
         var tint = lastValid ? validTint : invalidTint;

@@ -27,7 +27,7 @@ public static class GameSettings
 
     public static float PanSpeed
     {
-        get => PlayerPrefs.GetFloat(PanSpeedKey, 18f);
+        get => PlayerPrefs.GetFloat(PanSpeedKey, 15f);
         set
         {
             PlayerPrefs.SetFloat(PanSpeedKey, Mathf.Clamp(value, 6f, 30f));
@@ -51,6 +51,6 @@ public static class GameSettings
     public static void ResetToDefaults()
     {
         EdgePan = true;
-        PanSpeed = 18f;
+        PanSpeed = 15f;
     }
 }

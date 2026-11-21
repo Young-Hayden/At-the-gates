@@ -40,6 +40,11 @@ public class ProductionBuilding : MonoBehaviour
     /// out parameter rather than reading this shared value after a product loop.</summary>
     public string LastRefusalReason { get; private set; }
 
+    /// <summary>True while the queue head is ready but every spawn cell around the
+    /// footprint is occupied. The paid order is retained and retried; the HUD uses this
+    /// to tell the player why nothing is coming out.</summary>
+    public bool SpawnBlocked { get; private set; }
+
     /// <summary>0..1 progress on the item at the head of the queue.</summary>
     public float Progress
     {
@@ -192,13 +197,18 @@ public class ProductionBuilding : MonoBehaviour
         }
         UnitLimits.Invalidate();          // the cancelled order frees its roster slot
         Population.Invalidate();
+        if (queue.Count == 0) SpawnBlocked = false;
     }
 
     // ------------------------------------------------------------------ runtime
 
     void Update()
     {
-        if (queue.Count == 0) return;
+        if (queue.Count == 0)
+        {
+            SpawnBlocked = false;
+            return;
+        }
         timer -= Time.deltaTime;
         if (timer > 0f) return;
 
@@ -206,9 +216,11 @@ public class ProductionBuilding : MonoBehaviour
         if (!Spawn(index))
         {
             // Keep the paid-for item at the head of the queue and retry without charging again.
+            SpawnBlocked = true;
             timer = 0.5f;
             return;
         }
+        SpawnBlocked = false;
         queue.RemoveAt(0);
         Population.Invalidate();          // the order left the queue as a living unit
         if (queue.Count > 0) timer = products[queue[0]].buildSeconds;

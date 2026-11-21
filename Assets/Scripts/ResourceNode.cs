@@ -92,10 +92,30 @@ public class ResourceNode : MonoBehaviour
         if (!regrowing) return;
         regrowTimer -= Time.deltaTime;
         if (regrowTimer > 0f) return;
+
+        // A building placed over the stump/depleted animal must not be overlapped by
+        // the regrown footprint. Defer the regrow until the cell is free again; a
+        // permanent building simply leaves the node depleted.
+        if (blockingBuilding != null && FootprintOccupiedByOtherBuilding())
+        {
+            regrowTimer = Mathf.Max(1f, regrowSeconds * 0.1f);
+            return;
+        }
+
         regrowing = false;
         amount = maxAmount;
         if (blockingBuilding != null) blockingBuilding.SetBlocking(true);
         RefreshVisual();
+    }
+
+    bool FootprintOccupiedByOtherBuilding()
+    {
+        var grid = MapGrid.Instance;
+        if (grid == null || blockingBuilding == null) return false;
+        var cells = blockingBuilding.Cells;
+        for (int i = 0; i < cells.Count; i++)
+            if (grid.IsBlockedByBuilding(cells[i])) return true;
+        return false;
     }
 
     void Awake()
@@ -167,6 +187,22 @@ public class ResourceNode : MonoBehaviour
             bestD = d;
         }
         return best;
+    }
+
+    /// <summary>True when a worker standing at <paramref name="from"/> has a walkable
+    /// approach cell for this node, using the same rule as auto-assignment. Used only
+    /// to give a manual order visible feedback; the order itself is still retried.</summary>
+    public static bool IsApproachableFrom(Vector3 from, ResourceNode node, MapGrid grid = null)
+    {
+        if (node == null || node.Depleted) return false;
+        if (grid == null) grid = MapGrid.Instance;
+        if (grid == null) return true;
+
+        var start = grid.ResolveWalkableStart(grid.WorldToCell(from));
+        if (!start.HasValue) return false;
+        int region = grid.Region(start.Value);
+        return grid.NearestWalkableWithin(
+            start.Value, grid.WorldToCell(node.transform.position), 4, region, 1.6f).HasValue;
     }
 
     /// <summary>Nearest node that still has something in it, preferring the same

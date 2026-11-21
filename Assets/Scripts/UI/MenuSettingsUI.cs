@@ -43,6 +43,12 @@ public class MenuSettingsUI : MonoBehaviour
         if (panel != null) panel.SetActive(false);
     }
 
+    void Update()
+    {
+        if (panel != null && panel.activeSelf && Input.GetKeyDown(KeyCode.Escape))
+            Close();
+    }
+
     /// <summary>The display is fixed at 2560×1440 fullscreen window: keep the first
     /// resolution button as a non-interactive readout, hide the rest, and lock the
     /// fullscreen button.</summary>

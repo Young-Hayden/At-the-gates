@@ -45,7 +45,7 @@ public class CursorManager : MonoBehaviour
         // an armed attack order shows the swords wherever the cursor points
         if (selection != null && selection.AttackArmed) return Kind.Attack;
 
-        if (selection == null || selection.selected.Count == 0) return Kind.Normal;
+        if (selection == null || !selection.HasCombatSelection()) return Kind.Normal;
 
         if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return Kind.Normal;
 

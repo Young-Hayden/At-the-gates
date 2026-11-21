@@ -16,6 +16,8 @@ public class Minimap : MonoBehaviour, IPointerClickHandler
     public RectTransform viewport;
     public int textureWidth = 900;
     public int textureHeight = 500;
+    [Tooltip("刷新小地图渲染的帧间隔。2 = 约每两帧一次；边框仍每帧更新。")]
+    public int renderEveryNthFrame = 2;
     public Color background = new Color(0.035f, 0.055f, 0.06f, 1f);
 
     RawImage image;
@@ -78,11 +80,21 @@ public class Minimap : MonoBehaviour, IPointerClickHandler
         Rect map = rtsCamera.mapBounds;
         if (map.width <= 0f || map.height <= 0f) return;
 
+        // The viewport border is cheap and must track the main camera every frame.
+        UpdateViewport(map);
+
+        // A second full-map camera is one of the larger per-frame costs (measured in the
+        // 2026-11-08 audit). Throttle only the render; the RenderTexture keeps the last
+        // frame between updates, so the minimap stays live at half rate.
+        int stride = Mathf.Max(1, renderEveryNthFrame);
+        bool renderThisFrame = (Time.frameCount % stride) == 0;
+        mapCamera.enabled = renderThisFrame;
+        if (!renderThisFrame) return;
+
         float aspect = (float)target.width / target.height;
         mapCamera.orthographicSize = Mathf.Max(map.height * 0.5f, map.width * 0.5f / aspect);
         mapCamera.transform.position = new Vector3(map.center.x, map.center.y, -100f);
         mapCamera.transform.rotation = Quaternion.identity;
-        UpdateViewport(map);
     }
 
     void UpdateViewport(Rect map)

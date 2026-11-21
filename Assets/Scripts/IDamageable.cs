@@ -111,7 +111,7 @@ public static class Combatants
         for (int i = 0; i < Building.All.Count; i++)
         {
             var b = Building.All[i];
-            if (b == null || b.isGhost || !b.IsAlive) continue;
+            if (b == null || b.isGhost || !b.IsAlive || b.IsUnderConstruction) continue;
             if (b.team == myTeam || b.team == Team.Neutral) continue;
             var garrison = b.GetComponent<TowerGarrison>();
             if (garrison == null || !garrison.HasArcher) continue;
@@ -135,7 +135,11 @@ public static class Combatants
             var b = hits[i].GetComponentInParent<Building>();
             if (b != null && b.IsAlive && b.blocksMovement && TeamOf(b.team, myTeam)) return b;
         }
-        return null;
+
+        // The physics collider covers the bottom row only; the visible roof of a tall
+        // enemy building is still a legitimate focus/attack target.
+        return Building.FindAtVisualPoint(world,
+            b => b.blocksMovement && TeamOf(b.team, myTeam));
     }
 
     static bool TeamOf(Team other, Team myTeam)

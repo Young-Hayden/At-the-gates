@@ -174,7 +174,8 @@ public class CombatAI : MonoBehaviour
         // destination with an arrival callback that calls CompleteOrder() or garrisons an
         // archer. An explicit attack now owns the unit, so cancel that path first; otherwise
         // the late callback would clear this forced target or garrison on arrival.
-        if (orderKind == OrderKind.Move || orderKind == OrderKind.AttackMove || orderKind == OrderKind.Garrison)
+        if (orderKind == OrderKind.Move || orderKind == OrderKind.AttackMove ||
+            orderKind == OrderKind.Garrison || orderKind == OrderKind.Patrol)
             mover.Stop();
 
         orderKind = OrderKind.Auto;

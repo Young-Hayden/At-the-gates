@@ -325,7 +325,11 @@ public class HUD : MonoBehaviour
 
         if (productionTitle != null)
         {
-            if (building.IsUnderConstruction)
+            if (factory.SpawnBlocked)
+            {
+                productionTitle.text = BuildingTitle(building) + "   出口被堵，等待空位";
+            }
+            else if (building.IsUnderConstruction)
             {
                 productionTitle.text = BuildingTitle(building) + "   建造中 "
                     + Mathf.RoundToInt(building.ConstructionProgress * 100f) + "%";
@@ -708,7 +712,7 @@ public class HUD : MonoBehaviour
         if (n.Contains("Archery")) return "靶场";
         if (n.Contains("Monastery")) return "修道院";
         if (n.Contains("Tower")) return "箭塔";
-        if (n.Contains("GoldMine")) return "金矿";
+        if (n.Contains("Mine_Gold") || n.Contains("GoldMine")) return "金矿";
         if (n.Contains("Sheep")) return "羊";
         if (n.Contains("Tree")) return "树木";
         return n;
@@ -749,11 +753,13 @@ public class HUD : MonoBehaviour
                  + (b.isDropoff ? "\n卸货点" : "")
                  + (b.isCommandCenter ? "\n指挥中心 —— 被摧毁即失败" : "");
 
-            // A finished tower also reports the range it really covers: its own 5.5
-            // minimum, or the garrisoned archer's longer reach.
+            // A finished tower reports the range it actually covers. An empty tower
+            // has no archer and cannot fire, so it must not advertise 5.5 defense.
             var tower = b.GetComponent<TowerGarrison>();
             if (tower != null && !b.IsUnderConstruction)
-                body += "\n防御射程 " + tower.ActiveRange.ToString("0.#");
+                body += tower.HasArcher
+                    ? "\n防御射程 " + tower.ActiveRange.ToString("0.#")
+                    : "\n无弓手（需驻防）";
 
             // Gated on the button: until Phase 2 wires repairButton this is null, so the
             // shipped panel reads exactly as before. The line is shown for a friendly,
@@ -773,13 +779,15 @@ public class HUD : MonoBehaviour
             var u = live[0];
             var a = u.GetComponent<UnitActor>();
             var g = u.GetComponent<Gatherer>();
+            var healer = u.GetComponent<Healer>();
             title = a != null ? UnitTitle(a) : u.name;
             body = (a != null ? "生命 " + a.health + " / " + a.EffectiveMaxHealth
                     + (a.isCombatant
                         ? "\n攻击 " + a.EffectiveAttackDamage + "　射程 " + a.attackRange
                         : "")
                     : "")
-                 + (g != null ? "\n" + g.Status + (g.Carrying > 0 ? "（背 " + g.Carrying + "）" : "") : "");
+                 + (g != null ? "\n" + g.Status + (g.Carrying > 0 ? "（背 " + g.Carrying + "）" : "") : "")
+                 + (healer != null ? "\n" + healer.Status : "");
         }
         else if (live.Count > 1)
         {
@@ -853,6 +861,30 @@ public class HUD : MonoBehaviour
         if (selectionBody != null) selectionBody.text = body;
     }
 
+    /// <summary>True while any finished player factory has a paid queue item but no
+    /// free spawn cell. The status line mirrors the selected factory's title.</summary>
+    bool AnyFactoryBlocked()
+    {
+        for (int i = 0; i < factories.Count; i++)
+            if (factories[i] != null && factories[i].SpawnBlocked) return true;
+        return false;
+    }
+
+    static string FullStockpileMessage(Economy eco)
+    {
+        if (eco == null) return null;
+        bool gold = eco.gold >= ResourceLimits.GoldCap;
+        bool wood = eco.wood >= ResourceLimits.WoodCap;
+        bool meat = eco.meat >= ResourceLimits.MeatCap;
+        if (!gold && !wood && !meat) return null;
+
+        string kinds = "";
+        if (gold) kinds += "金";
+        if (wood) kinds += "木";
+        if (meat) kinds += "肉";
+        return "仓库已满：" + kinds;
+    }
+
     void RefreshStatus()
     {
         if (statusText == null) return;
@@ -866,6 +898,13 @@ public class HUD : MonoBehaviour
             msg = string.IsNullOrEmpty(BuildingPlacer.Instance.LastRefusalReason)
                 ? "左键放置　　右键 / Esc 取消"
                 : BuildingPlacer.Instance.LastRefusalReason;
+        else if (AnyFactoryBlocked())
+            msg = "生产出口被堵";
+        else
+        {
+            var full = FullStockpileMessage(Economy.Instance);
+            if (full != null) msg = full;
+        }
 
         // Population lives in the resource bar's fourth cell once PolishHUD has wired it;
         // before that (and in tests that build a HUD by hand) it falls back to the status

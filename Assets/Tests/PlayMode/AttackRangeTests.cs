@@ -12,6 +12,7 @@ using UnityEngine.TestTools;
 public class AttackRangeTests : RegressionFixture
 {
     const string TowerPath = "Assets/Prefabs/Buildings/Knights/Tower_Blue.prefab";
+    const string ArcherPath = "Assets/Prefabs/Units/Archer_Blue.prefab";
 
     [UnityTest]
     public IEnumerator SelectedUnits_ShowOneRingEach_AndUpdateOnDeselect()
@@ -45,7 +46,7 @@ public class AttackRangeTests : RegressionFixture
     }
 
     [UnityTest]
-    public IEnumerator SelectedFinishedTower_ShowsFivePointFive_ButHalfBuiltTowerDoesNot()
+    public IEnumerator EmptyTower_ShowsNoRing_AndGarrisonedTowerShowsFivePointFive()
     {
         PaintRect(-6, -6, 14, 14);
         var prefab = LoadPrefab<GameObject>(TowerPath);
@@ -57,8 +58,21 @@ public class AttackRangeTests : RegressionFixture
         Selection.selectedBuilding = building;
         InvokeUpdateRings();
         yield return null;
+
+        Assert.IsFalse(Object.FindObjectsByType<AttackRangeIndicator>(FindObjectsSortMode.None)
+                .Any(r => r.IsVisible),
+            "An empty tower cannot fire and must not advertise a 5.5 defensive ring.");
+
+        var archerPrefab = LoadPrefab<GameObject>(ArcherPath);
+        var archer = Object.Instantiate(archerPrefab,
+            Grid.CellCenter(new Vector3Int(-3, 0)), Quaternion.identity);
+        yield return null;
+        Assert.IsTrue(tower.GetComponent<TowerGarrison>().Garrison(archer.GetComponent<UnitActor>()));
+
+        InvokeUpdateRings();
+        yield return null;
         var ring = Object.FindFirstObjectByType<AttackRangeIndicator>();
-        Assert.IsNotNull(ring);
+        Assert.IsNotNull(ring, "A garrisoned tower must show its actual 5.5 coverage.");
         Assert.AreEqual(5.5f, ring.Radius, 0.001f);
 
         var halfBuilt = Object.Instantiate(prefab, Grid.CellCenter(new Vector3Int(3, 0)), Quaternion.identity);

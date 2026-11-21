@@ -67,7 +67,7 @@ public class AIController : MonoBehaviour
     // ---- private bank ----
     int gold, wood, meat;
 
-    float buildTimer, produceTimer, attackTimer, gatherTimer, repairTimer, researchTimer;
+    float buildTimer, produceTimer, attackTimer, gatherTimer, repairTimer, researchTimer, garrisonTimer;
     int nextBuild;
     int wave;
 
@@ -82,6 +82,7 @@ public class AIController : MonoBehaviour
     /// <summary>How often the AI looks at the next technology line. Cadence only; the
     /// line itself lives in <see cref="Technology"/> and is saved there.</summary>
     const float ResearchCheckSeconds = 3f;
+    const float GarrisonCheckSeconds = 3f;
 
     /// <summary>The fixed research order: Forge first for its immediate damage, then
     /// Armour, then Gathering last because it only pays back over a long game. Read by
@@ -173,6 +174,7 @@ public class AIController : MonoBehaviour
         gatherTimer = 1f;
         repairTimer = RepairCheckSeconds;
         researchTimer = ResearchCheckSeconds;
+        garrisonTimer = GarrisonCheckSeconds;
     }
 
     // ------------------------------------------------------------------ bank
@@ -282,13 +284,21 @@ public class AIController : MonoBehaviour
 
         researchTimer -= dt;
         if (researchTimer <= 0f) { researchTimer = ResearchCheckSeconds; Research(); }
+
+        garrisonTimer -= dt;
+        if (garrisonTimer <= 0f) { garrisonTimer = GarrisonCheckSeconds; GarrisonTowers(); }
     }
 
     // ------------------------------------------------------------------ build
 
     void Build()
     {
-        if (buildOrder == null || nextBuild >= buildOrder.Length) return;
+        if (buildOrder == null) return;
+        if (nextBuild >= buildOrder.Length)
+        {
+            RebuildMissing();
+            return;
+        }
         var prefab = buildOrder[nextBuild];
         if (prefab == null) { nextBuild++; return; }
 
@@ -306,6 +316,57 @@ public class AIController : MonoBehaviour
         if (nb != null) nb.MarkBuiltDuringMatch();
         nextBuild++;
         Debug.Log($"[AI] 建成 {prefab.name} @{pos}（余 金{gold} 木{wood}）");
+    }
+
+    /// <summary>After the opening build order is complete, replace destroyed
+    /// production/house/tower buildings. The desired count comes from the buildOrder
+    /// itself; one missing building is rebuilt per build tick. The command centre is
+    /// excluded because its destruction ends the match.</summary>
+    void RebuildMissing()
+    {
+        for (int i = 0; i < buildOrder.Length; i++)
+        {
+            var prefab = buildOrder[i];
+            if (prefab == null) continue;
+            var b = prefab.GetComponent<Building>();
+            if (b == null || b.isCommandCenter) continue;
+
+            int desired = 0;
+            for (int j = 0; j < buildOrder.Length; j++)
+                if (buildOrder[j] == prefab) desired++;
+            if (CountLivingPrefab(prefab) >= desired) continue;
+
+            if (!CanAfford(b.cost)) continue;
+            if (!FindSite(prefab, out Vector3 pos)) continue;
+            if (!TrySpend(b.cost)) continue;
+
+            var go = Instantiate(prefab, pos, Quaternion.identity);
+            go.name = prefab.name + "_AI";
+            var nb = go.GetComponent<Building>();
+            if (nb != null) nb.MarkBuiltDuringMatch();
+            Debug.Log($"[AI] 重建 {prefab.name} @{pos}（余 金{gold} 木{wood}）");
+            return;
+        }
+    }
+
+    int CountLivingPrefab(GameObject prefab)
+    {
+        var identity = prefab.GetComponent<SaveIdentity>();
+        string prefabId = identity != null ? identity.PrefabId : null;
+        int n = 0;
+        for (int i = 0; i < Building.All.Count; i++)
+        {
+            var b = Building.All[i];
+            if (b == null || b.isGhost || !b.IsAlive || b.team != team) continue;
+            if (!string.IsNullOrEmpty(prefabId))
+            {
+                var bi = b.GetComponent<SaveIdentity>();
+                if (bi == null || bi.PrefabId != prefabId) continue;
+            }
+            else if (!b.name.StartsWith(prefab.name)) continue;
+            n++;
+        }
+        return n;
     }
 
     /// <summary>Footprint width/depth without touching the prefab asset's runtime state.</summary>
@@ -469,6 +530,82 @@ public class AIController : MonoBehaviour
         return 99; // towers and other key-less buildings are not auto-repaired
     }
 
+    // ------------------------------------------------------------------ garrison
+
+    /// <summary>Put a free archer into every finished empty tower. The tower build is
+    /// useful only when manned: an empty tower cannot fire. Archers already walking are
+    /// left alone; the next tick retries if the path failed or the tower was occupied.</summary>
+    void GarrisonTowers()
+    {
+        for (int i = 0; i < Building.All.Count; i++)
+        {
+            var building = Building.All[i];
+            if (building == null || building.team != team || building.isGhost ||
+                !building.IsAlive || building.IsUnderConstruction) continue;
+            var tower = building.GetComponent<TowerGarrison>();
+            if (tower == null || tower.HasArcher) continue;
+
+            var archer = FindFreeArcher(building);
+            if (archer == null) continue;
+            TrySendArcherToTower(archer, building, tower);
+        }
+    }
+
+    UnitActor FindFreeArcher(Building towerBuilding)
+    {
+        UnitActor best = null;
+        float bestD = float.MaxValue;
+        for (int i = 0; i < UnitActor.All.Count; i++)
+        {
+            var u = UnitActor.All[i];
+            if (u == null || !u.IsAlive || !u.enabled || u.team != team) continue;
+            if (u.projectile == null) continue;          // jobs are for archers only
+            var mover = u.GetComponent<UnitMover>();
+            if (mover == null || mover.Moving) continue; // already travelling somewhere
+            if (u.GetComponent<CombatAI>() == null) continue;
+
+            float d = (u.transform.position - towerBuilding.transform.position).sqrMagnitude;
+            if (d < bestD) { bestD = d; best = u; }
+        }
+        return best;
+    }
+
+    bool TrySendArcherToTower(UnitActor archer, Building building, TowerGarrison tower)
+    {
+        var grid = MapGrid.Instance;
+        if (grid == null) return false;
+        var mover = archer.GetComponent<UnitMover>();
+        var ai = archer.GetComponent<CombatAI>();
+        if (mover == null || ai == null) return false;
+
+        var start = grid.ResolveWalkableStart(grid.WorldToCell(archer.transform.position));
+        if (!start.HasValue) return false;
+        int region = grid.Region(start.Value);
+
+        List<Vector3Int> bestPath = null;
+        for (int i = 0; i < building.Cells.Count; i++)
+        {
+            var dest = grid.NearestWalkableWithin(start.Value, building.Cells[i], 2, region, 1.75f);
+            if (!dest.HasValue) continue;
+            var path = grid.FindPath(start.Value, dest.Value);
+            if (path != null && (bestPath == null || path.Count < bestPath.Count)) bestPath = path;
+        }
+        if (bestPath == null) return false;
+
+        ai.OrderGarrison();
+        mover.SetPath(bestPath, () =>
+        {
+            if (tower == null || building == null || !building.IsAlive || tower.HasArcher ||
+                archer == null || !archer.enabled || !archer.IsAlive)
+            {
+                if (ai != null) ai.CompleteOrder();
+                return;
+            }
+            if (!tower.Garrison(archer)) ai.CompleteOrder();
+        });
+        return true;
+    }
+
     // ------------------------------------------------------------------ research
 
     /// <summary>The first line in <see cref="ResearchOrder"/> this side has not
@@ -520,6 +657,9 @@ public class AIController : MonoBehaviour
         var dropoff = Building.FindNearestDropoff(HomePosition, team);
         if (dropoff == null) return;                       // no centre yet — nothing to haul to
 
+        bool starving = Upkeep.IsStarving(team);
+        if (starving) RetaskOneToMeat();
+
         var idle = new List<Gatherer>();
         foreach (var u in UnitActor.All)
         {
@@ -534,7 +674,6 @@ public class AIController : MonoBehaviour
         // idle.Count as well, which *raised* the budget whenever idlers existed —
         // the AI ended up fielding more gatherers than maxGatherers.)
         int budget = Mathf.Max(0, maxGatherers - CountWorking());
-        bool starving = Upkeep.IsStarving(team);
         foreach (var g in idle)
         {
             if (budget <= 0) break;
@@ -548,6 +687,30 @@ public class AIController : MonoBehaviour
             g.AssignAuto(node);
             budget--;
         }
+    }
+
+    /// <summary>If the side is starving and nobody is working meat, pull one worker off
+    /// wood/gold. This is the case the idle-only dispatch cannot see: every worker is
+    /// busy, the meat bank is empty, and production stays frozen until a node empties.</summary>
+    void RetaskOneToMeat()
+    {
+        int meatWorkers = 0;
+        Gatherer candidate = null;
+        for (int i = 0; i < UnitActor.All.Count; i++)
+        {
+            var u = UnitActor.All[i];
+            if (u == null || !u.IsAlive || u.team != team) continue;
+            var g = u.GetComponent<Gatherer>();
+            if (g == null || !g.IsWorking || g.IsRetreating) continue;
+            var node = g.TargetNode;
+            if (node == null) continue;
+            if (node.kind == ResourceKind.Meat) { meatWorkers++; continue; }
+            if (candidate == null) candidate = g;
+        }
+        if (meatWorkers > 0 || candidate == null) return;
+
+        var meat = FindGatherNode(candidate, true);
+        if (meat != null) candidate.AssignAuto(meat);
     }
 
     /// <summary>The nearest node this worker can actually use. While starving, meat is

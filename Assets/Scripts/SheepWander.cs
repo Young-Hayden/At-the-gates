@@ -252,6 +252,7 @@ public class SheepWander : MonoBehaviour
         {
             var cell = destinationCells[i];
             if (!grid.TerrainWalkable(cell)) return false;
+            if (grid.IsRamp(cell)) return false;      // sheep must not occupy a ramp
             if (!IsOwnCell(cell) && grid.IsBlockedByBuilding(cell)) return false;
             if (UnitAt(grid, cell)) return false;
         }

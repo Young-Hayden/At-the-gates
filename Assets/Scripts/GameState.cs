@@ -231,6 +231,11 @@ public class GameState : MonoBehaviour
         Time.timeScale = 0f;
         foreach (var ai in Object.FindObjectsByType<AIController>(FindObjectsSortMode.None))
             ai.active = false;
+        // Towers must release their archers before the blanket script shutdown below.
+        // Ungarrison re-enables the archer's CombatAI/Healer; doing it first means the
+        // later loops still leave those components disabled for the result screen.
+        foreach (var t in Object.FindObjectsByType<TowerGarrison>(FindObjectsSortMode.None))
+            t.enabled = false;
         foreach (var ai in Object.FindObjectsByType<CombatAI>(FindObjectsSortMode.None))
             ai.enabled = false;
         foreach (var pb in Object.FindObjectsByType<ProductionBuilding>(FindObjectsSortMode.None))
@@ -239,8 +244,6 @@ public class GameState : MonoBehaviour
             g.enabled = false;
         foreach (var h in Object.FindObjectsByType<Healer>(FindObjectsSortMode.None))
             h.enabled = false;
-        foreach (var t in Object.FindObjectsByType<TowerGarrison>(FindObjectsSortMode.None))
-            t.enabled = false;
         foreach (var sm in Object.FindObjectsByType<SelectionManager>(FindObjectsSortMode.None))
             sm.enabled = false;
         foreach (var bp in Object.FindObjectsByType<BuildingPlacer>(FindObjectsSortMode.None))

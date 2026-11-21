@@ -29,6 +29,10 @@ public static class SaveGameService
     static SaveGameData pendingLoad;
     static string pendingError;
 
+    /// <summary>True when the most recent <see cref="TryRead"/> succeeded by loading the
+    /// backup instead of the primary slot.</summary>
+    public static bool LastReadUsedBackup { get; private set; }
+
     static SavePrefabCatalog Catalog
     {
         get
@@ -78,7 +82,36 @@ public static class SaveGameService
 
     public static bool TryRead(out SaveGameData data, out string error)
     {
-        return TryReadFromPath(SavePath, out data, out error);
+        return TryReadWithBackup(SavePath, out data, out error);
+    }
+
+    /// <summary>Read a slot, falling back to the <c>.bak</c> file written by the atomic
+    /// replacement when the primary file is missing or invalid. Kept as its own entry
+    /// point so arbitrary test/temp paths keep the strict single-file behaviour.</summary>
+    public static bool TryReadWithBackup(string path, out SaveGameData data, out string error)
+    {
+        data = null;
+        LastReadUsedBackup = false;
+        if (TryReadFromPath(path, out data, out string primaryError))
+        {
+            error = null;
+            return true;
+        }
+
+        string backup = path + ".bak";
+        string backupError = null;
+        if (File.Exists(backup) && TryReadFromPath(backup, out data, out backupError))
+        {
+            LastReadUsedBackup = true;
+            Debug.LogWarning("[Save] 主存档不可读，已回退备份：" + backup);
+            error = null;
+            return true;
+        }
+
+        error = File.Exists(backup)
+            ? primaryError + "；备份也无法读取：" + backupError
+            : primaryError;
+        return false;
     }
 
     public static bool TryReadFromPath(string path, out SaveGameData data, out string error)
@@ -314,26 +347,35 @@ public static class SaveGameService
         if (data.buildings != null)
             foreach (var r in data.buildings)
             {
-                string error = ValidatePrefab(r != null ? r.prefabId : null);
+                if (r == null) return "存档建筑记录为空。";
+                string error = ValidatePrefab(r.prefabId);
                 if (error != null) return error;
                 if (r.hasGarrison && r.garrison != null)
                 {
                     error = ValidatePrefab(r.garrison.prefabId);
                     if (error != null) return error;
                 }
+                if (r.resources != null)
+                    foreach (var n in r.resources)
+                        if (n == null) return "存档资源记录为空。";
             }
         if (data.units != null)
             foreach (var r in data.units)
             {
-                string error = ValidatePrefab(r != null ? r.prefabId : null);
+                if (r == null) return "存档单位记录为空。";
+                string error = ValidatePrefab(r.prefabId);
                 if (error != null) return error;
             }
         if (data.bushes != null)
             foreach (var r in data.bushes)
             {
-                string error = ValidatePrefab(r != null ? r.prefabId : null);
+                if (r == null) return "存档草丛记录为空。";
+                string error = ValidatePrefab(r.prefabId);
                 if (error != null) return error;
             }
+        if (data.ai != null)
+            foreach (var a in data.ai)
+                if (a == null) return "存档 AI 记录为空。";
         return null;
     }
 
@@ -380,7 +422,8 @@ public static class SaveGameService
         for (int i = 0; i < data.buildings.Count; i++)
         {
             var r = data.buildings[i];
-            if (!Catalog.TryGetPrefab(r.prefabId, out var prefab)) continue;
+            if (r == null) { buildingViews.Add(null); continue; }
+            if (!Catalog.TryGetPrefab(r.prefabId, out var prefab)) { buildingViews.Add(null); continue; }
             var go = UnityEngine.Object.Instantiate(prefab, r.position, r.rotation);
             go.name = string.IsNullOrEmpty(r.objectName) ? prefab.name : r.objectName;
             go.transform.localScale = r.localScale;
@@ -393,7 +436,8 @@ public static class SaveGameService
         for (int i = 0; i < data.units.Count; i++)
         {
             var r = data.units[i];
-            if (!Catalog.TryGetPrefab(r.prefabId, out var prefab)) continue;
+            if (r == null) { unitViews.Add(null); continue; }
+            if (!Catalog.TryGetPrefab(r.prefabId, out var prefab)) { unitViews.Add(null); continue; }
             var go = UnityEngine.Object.Instantiate(prefab, r.position, r.rotation);
             go.name = string.IsNullOrEmpty(r.objectName) ? prefab.name : r.objectName;
             go.transform.localScale = r.localScale;
@@ -407,6 +451,7 @@ public static class SaveGameService
         for (int i = 0; i < data.bushes.Count; i++)
         {
             var r = data.bushes[i];
+            if (r == null) continue;
             if (!Catalog.TryGetPrefab(r.prefabId, out var prefab)) continue;
             var go = UnityEngine.Object.Instantiate(prefab, r.position, r.rotation);
             go.name = string.IsNullOrEmpty(r.objectName) ? prefab.name : r.objectName;
@@ -429,8 +474,9 @@ public static class SaveGameService
                 if (pb != null) pb.RestoreSaveState(r.production);
             }
             var nodes = b.GetComponentsInChildren<ResourceNode>(true);
-            for (int n = 0; n < nodes.Length && n < r.resources.Count; n++)
-                nodes[n].RestoreSaveState(r.resources[n]);
+            if (r.resources != null)
+                for (int n = 0; n < nodes.Length && n < r.resources.Count; n++)
+                    nodes[n].RestoreSaveState(r.resources[n]);
         }
 
         for (int i = 0; i < unitViews.Count && i < data.units.Count; i++)
@@ -449,6 +495,7 @@ public static class SaveGameService
         for (int i = 0; i < data.ai.Count; i++)
         {
             var saved = data.ai[i];
+            if (saved == null) continue;
             bool applied = false;
             for (int a = 0; a < AIController.All.Count; a++)
                 if (AIController.All[a] != null && AIController.All[a].team == saved.team)

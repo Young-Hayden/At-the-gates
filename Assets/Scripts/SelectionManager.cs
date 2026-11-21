@@ -46,7 +46,16 @@ public class SelectionManager : MonoBehaviour
     public void ArmAttack()
     {
         if (!HasCombatSelection()) return;
+
+        // Clicking the attack button while a building ghost is up used to be a silent
+        // no-op (the ghost owns the mouse). The player's intent is clear: leave
+        // placement and aim an attack. Cancel the ghost first.
+        if (BuildingPlacer.Instance != null && BuildingPlacer.Instance.IsPlacing)
+            BuildingPlacer.Instance.Cancel();
+
         AttackArmed = true;
+        attackArmedFrame = Time.frameCount;
+        attackPressStartedOnWorld = false;
         dragging = false;
         leftPressStartedOnWorld = false;
     }
@@ -81,7 +90,7 @@ public class SelectionManager : MonoBehaviour
         return true;
     }
 
-    bool HasCombatSelection()
+    public bool HasCombatSelection()
     {
         for (int i = 0; i < selected.Count; i++)
         {
@@ -104,6 +113,8 @@ public class SelectionManager : MonoBehaviour
     Vector2 dragStart;
     bool dragging;
     bool leftPressStartedOnWorld;
+    bool attackPressStartedOnWorld;
+    int attackArmedFrame = -1;
 
     const float MarkerLifetime = 0.7f;
     const float DragThreshold = 8f;
@@ -229,21 +240,16 @@ public class SelectionManager : MonoBehaviour
         bool leftDown = Input.GetMouseButtonDown(0);
         bool leftHeld = Input.GetMouseButton(0);
         bool leftUp = Input.GetMouseButtonUp(0);
+        bool overUI = PointerOverUI();
 
-        // UI frames still pass the real button edges through the left-mouse path so
-        // a press that began on HUD cannot leave a stale world-origin press behind.
-        if (PointerOverUI())
-        {
-            HandleLeftMouseInput(mw, screen, leftDown, leftHeld, leftUp, true);
-            UpdateRings();
-            return;
-        }
-
+        // Keyboard shortcuts are world commands, not pointer commands. They must keep
+        // working with the cursor parked on the HUD (very common at the bottom bars).
         if (!AttackArmed)
         {
             if (Input.GetKeyDown(KeyCode.Delete)) DemolishSelected();
             if (Input.GetKeyDown(KeyCode.H) && selected.Count > 0)
                 OrderHold();
+            if (Input.GetKeyDown(KeyCode.A)) ArmAttack();
             HandleControlGroupKeys();
         }
 
@@ -254,9 +260,36 @@ public class SelectionManager : MonoBehaviour
             dragging = false;
             leftPressStartedOnWorld = false;
             if (!HasCombatSelection()) DisarmAttack();      // the fighters died mid-aim
-            HandleAttackArmedInput(mw,
-                leftUp,
-                Input.GetKeyDown(KeyCode.Escape) || Input.GetMouseButtonDown(1));
+
+            // Only a click that both starts and ends in the world can confirm. This
+            // keeps the attack button's own release (or a release after dragging off
+            // the HUD) from being consumed as the attack click.
+            if (leftDown && !overUI) attackPressStartedOnWorld = true;
+            bool confirm = leftUp && attackPressStartedOnWorld &&
+                           Time.frameCount != attackArmedFrame;
+            if (leftUp) attackPressStartedOnWorld = false;
+
+            // Cancellation must also work while the pointer is over the HUD: the
+            // attack button itself is on the HUD, so the cursor is normally there
+            // right after arming. Confirming with a left click over UI remains blocked.
+            bool cancel = Input.GetKeyDown(KeyCode.Escape) || Input.GetMouseButtonDown(1);
+            if (overUI)
+            {
+                if (cancel) DisarmAttack();
+                UpdateRings();
+                return;
+            }
+
+            HandleAttackArmedInput(mw, confirm, cancel);
+            UpdateRings();
+            return;
+        }
+
+        // UI frames still pass the real button edges through the left-mouse path so
+        // a press that began on HUD cannot leave a stale world-origin press behind.
+        if (overUI)
+        {
+            HandleLeftMouseInput(mw, screen, leftDown, leftHeld, leftUp, true);
             UpdateRings();
             return;
         }
@@ -338,6 +371,12 @@ public class SelectionManager : MonoBehaviour
             var b = overlapBuf[i].GetComponentInParent<Building>();
             if (b != null && Selectable(b)) { selectedBuilding = b; return; }
         }
+
+        // Physics only covers the one-tile-deep movement footprint. A click on the
+        // visible roof of a tall building must still select its base.
+        var visualBuilding = Building.FindAtVisualPoint(mw,
+            b => b.team != Team.Neutral && Selectable(b));
+        if (visualBuilding != null) selectedBuilding = visualBuilding;
     }
 
     void BoxSelect(Vector2 releaseScreen)
@@ -592,6 +631,7 @@ public class SelectionManager : MonoBehaviour
     bool AssignGatherers(ResourceNode node)
     {
         int assigned = 0;
+        bool anyReachable = false;
         for (int i = 0; i < selected.Count; i++)
         {
             var u = selected[i];
@@ -599,8 +639,12 @@ public class SelectionManager : MonoBehaviour
             var g = u.GetComponent<Gatherer>();
             if (g == null) continue;               // soldiers cannot gather
             g.Assign(node);
+            if (node != null && ResourceNode.IsApproachableFrom(u.transform.position, node))
+                anyReachable = true;
             assigned++;
         }
+        if (assigned > 0 && node != null && !anyReachable)
+            ShowBlockedMarker(node.transform.position);
         return assigned > 0;
     }
 
@@ -609,6 +653,7 @@ public class SelectionManager : MonoBehaviour
     bool AssignRepairers(Building building)
     {
         int assigned = 0;
+        bool anyReachable = false;
         for (int i = 0; i < selected.Count; i++)
         {
             var u = selected[i];
@@ -616,8 +661,12 @@ public class SelectionManager : MonoBehaviour
             var g = u.GetComponent<Gatherer>();
             if (g == null) continue;               // soldiers cannot repair
             g.AssignRepair(building);
+            if (building != null && Building.IsApproachableFrom(u.transform.position, building))
+                anyReachable = true;
             assigned++;
         }
+        if (assigned > 0 && building != null && !anyReachable)
+            ShowBlockedMarker(building.transform.position);
         return assigned > 0;
     }
 
@@ -634,7 +683,11 @@ public class SelectionManager : MonoBehaviour
             if (b.team != player || !b.CanRepair) continue;
             return b;
         }
-        return null;
+
+        // The collider only covers the bottom row; right-clicking the visible body
+        // of a tall damaged building must still route workers to repair it.
+        return Building.FindAtVisualPoint(world,
+            b => b.team == player && b.CanRepair);
     }
 
     /// <summary>Find a clearable bush under the cursor, using its sprite bounds first
@@ -664,6 +717,7 @@ public class SelectionManager : MonoBehaviour
     bool AssignClearers(ClearableBush bush)
     {
         int assigned = 0;
+        bool anyReachable = false;
         for (int i = 0; i < selected.Count; i++)
         {
             var u = selected[i];
@@ -671,8 +725,12 @@ public class SelectionManager : MonoBehaviour
             var g = u.GetComponent<Gatherer>();
             if (g == null) continue;
             g.AssignClear(bush);
+            if (bush != null && ClearableBush.IsApproachableFrom(u.transform.position, bush))
+                anyReachable = true;
             assigned++;
         }
+        if (assigned > 0 && bush != null && !anyReachable)
+            ShowBlockedMarker(bush.transform.position);
         return assigned > 0;
     }
 
@@ -794,6 +852,7 @@ public class SelectionManager : MonoBehaviour
     bool OrderAttack(IDamageable enemy)
     {
         int ordered = 0;
+        bool anyReachable = false;
         for (int i = 0; i < selected.Count; i++)
         {
             var u = selected[i];
@@ -803,9 +862,49 @@ public class SelectionManager : MonoBehaviour
             var a = u.GetComponent<UnitActor>();
             if (a != null && !a.isCombatant) continue;
             ai.OrderAttack(enemy);
+            if (CanEngage(u, enemy)) anyReachable = true;
             ordered++;
         }
+        if (ordered > 0 && enemy != null && !anyReachable)
+            ShowBlockedMarker(enemy.Transform.position);
         return ordered > 0;
+    }
+
+    /// <summary>Whether this unit can actually bring the target into weapon range:
+    /// already in range, or a walkable approach cell exists inside its region. Used
+    /// only for the red-X feedback; the forced attack itself is still retained.</summary>
+    static bool CanEngage(UnitMover u, IDamageable target)
+    {
+        if (u == null || target == null) return false;
+        var actor = u.GetComponent<UnitActor>();
+        if (actor == null) return false;
+        var grid = MapGrid.Instance;
+        if (grid == null) return true;
+
+        float range = Mathf.Max(0.1f, actor.attackRange);
+        Vector2 me = u.transform.position;
+
+        if (target is Building building && building != null && building.Cells.Count > 0)
+        {
+            for (int i = 0; i < building.Cells.Count; i++)
+                if (Vector2.Distance(me, grid.CellCenter(building.Cells[i])) <= range)
+                    return true;
+
+            var start = grid.ResolveWalkableStart(grid.WorldToCell(u.transform.position));
+            if (!start.HasValue) return false;
+            int region = grid.Region(start.Value);
+            for (int i = 0; i < building.Cells.Count; i++)
+                if (grid.NearestWalkableWithin(start.Value, building.Cells[i], 4, region, range).HasValue)
+                    return true;
+            return false;
+        }
+
+        if (Vector2.Distance(me, target.Transform.position) <= range) return true;
+        var unitStart = grid.ResolveWalkableStart(grid.WorldToCell(u.transform.position));
+        if (!unitStart.HasValue) return false;
+        int unitRegion = grid.Region(unitStart.Value);
+        var goal = grid.WorldToCell(target.Transform.position);
+        return grid.NearestWalkableWithin(unitStart.Value, goal, 4, unitRegion, range).HasValue;
     }
 
     /// <summary>
@@ -980,7 +1079,8 @@ public class SelectionManager : MonoBehaviour
     {
         var building = selectedBuilding;
         var tower = building != null ? building.GetComponent<TowerGarrison>() : null;
-        bool showTowerRing = tower != null && building.IsAlive && !building.IsUnderConstruction;
+        bool showTowerRing = tower != null && building.IsAlive &&
+                             !building.IsUnderConstruction && tower.HasArcher;
 
         // Size the pool to what this frame needs, growing at most once per frame.
         int needed = 0;
@@ -988,7 +1088,8 @@ public class SelectionManager : MonoBehaviour
         {
             var u = selected[i];
             if (u == null || !IsLiving(u)) continue;
-            if (u.GetComponent<UnitActor>() != null) needed++;
+            var actor = u.GetComponent<UnitActor>();
+            if (actor != null && actor.isCombatant) needed++;
         }
         if (showTowerRing) needed++;
         if (rangeIndicators.Count < needed)
@@ -1004,7 +1105,7 @@ public class SelectionManager : MonoBehaviour
             var u = selected[i];
             if (u == null || !IsLiving(u)) continue;
             var actor = u.GetComponent<UnitActor>();
-            if (actor == null) continue;
+            if (actor == null || !actor.isCombatant) continue;
             ShowRangeRing(used++, u.transform.position,
                 Mathf.Max(0.1f, actor.attackRange), RangeTint(actor.team));
         }

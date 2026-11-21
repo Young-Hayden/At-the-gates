@@ -261,10 +261,19 @@ public class Gatherer : MonoBehaviour
         // A full kind is skipped entirely: harvesting it would only discard the load.
         if (MapGrid.Instance == null) return;
         var team = actor != null ? actor.team : Team.Neutral;
-        var best = ResourceNode.FindNearestReachable(
-            transform.position, autoStartRange, null,
-            candidate => !IsTargetedByOther(candidate, this)
-                      && !IsKindFull(team, candidate.kind));
+        bool starving = Upkeep.IsStarving(team);
+        ResourceNode best = null;
+        if (starving)
+            best = ResourceNode.FindNearestReachable(
+                transform.position, autoStartRange, null,
+                candidate => candidate.kind == ResourceKind.Meat
+                          && !IsTargetedByOther(candidate, this)
+                          && !IsKindFull(team, candidate.kind));
+        if (best == null)
+            best = ResourceNode.FindNearestReachable(
+                transform.position, autoStartRange, null,
+                candidate => !IsTargetedByOther(candidate, this)
+                          && !IsKindFull(team, candidate.kind));
         if (best != null) AssignAuto(best);
     }
 
@@ -496,6 +505,7 @@ public class Gatherer : MonoBehaviour
             carrying = 0;
             int credited = Credit(UnitTeam, kind, amount);
             if (credited > 0) ShowDelivery(where, kind, credited);
+            if (credited < amount) ShowFull(where);
         }
 
         dropoff = null;
@@ -682,6 +692,7 @@ public class Gatherer : MonoBehaviour
             carrying = 0;
             int credited = Credit(UnitTeam, kind, amount);
             if (credited > 0) ShowDelivery(where, kind, credited);
+            if (credited < amount) ShowFull(where);
         }
         dropoff = null;
         if (clearTarget != null) { phase = Phase.ToClear; return; }
@@ -761,6 +772,14 @@ public class Gatherer : MonoBehaviour
 
         var bank = FxBank.Instance;
         if (bank != null && kind == ResourceKind.Gold) bank.GoldSparkle(where);
+    }
+
+    /// <summary>A delivery that the capped stockpile could not accept. Without this the
+    /// cargo vanished and the player only saw the resource bar stop moving.</summary>
+    static void ShowFull(Vector3 where)
+    {
+        FloatingText.Show(where + new Vector3(0f, 1.6f, 0f), "仓库已满",
+            new Color(1f, 0.78f, 0.32f));
     }
 
     void StepToClear()

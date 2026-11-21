@@ -206,6 +206,7 @@ public class Building : MonoBehaviour, IDamageable
     HealthBar bar;
     bool wrecked;
     float repairPool;
+    SpriteRenderer clickVisual;
 
     readonly List<Vector3Int> cells = new List<Vector3Int>();
     int width = 1;
@@ -222,6 +223,7 @@ public class Building : MonoBehaviour, IDamageable
 
     void Awake()
     {
+        clickVisual = FindLargestClickVisual();
         Prepare();
     }
 
@@ -448,6 +450,88 @@ public class Building : MonoBehaviour, IDamageable
             if (b == null || b.isGhost || !b.IsAlive || b.IsUnderConstruction) continue;
             if (b.team == team && b.isCommandCenter) return true;
         }
+        return false;
+    }
+
+    /// <summary>Hit test on the visible body of a live building. The movement
+    /// collider is only one tile deep while the art is three to six tiles tall, so a
+    /// click on the roof would otherwise miss selection, repair and attack lookups.
+    /// Callers pass an accept filter; neutral scenery is deliberately not included by
+    /// default so a resource tree's sprite cannot hijack a building click.</summary>
+    public static Building FindAtVisualPoint(Vector3 world, System.Func<Building, bool> accept = null)
+    {
+        Building best = null;
+        float bestOrder = float.NegativeInfinity;
+        float bestDist = float.MaxValue;
+
+        for (int i = 0; i < All.Count; i++)
+        {
+            var b = All[i];
+            if (b == null || b.isGhost || !b.IsAlive) continue;
+            if (accept != null && !accept(b)) continue;
+
+            var sr = b.VisualForHitTest();
+            if (sr == null || !sr.enabled || sr.sprite == null) continue;
+            if (!sr.bounds.Contains(world)) continue;
+
+            float order = sr.sortingOrder;
+            float d = (b.transform.position - world).sqrMagnitude;
+            if (order > bestOrder + 0.001f ||
+                (Mathf.Abs(order - bestOrder) <= 0.001f && d < bestDist))
+            {
+                best = b;
+                bestOrder = order;
+                bestDist = d;
+            }
+        }
+        return best;
+    }
+
+    /// <summary>Largest active sprite on this building, excluding runtime health and
+    /// construction bars. Cached from Awake (before those bars exist) because the cursor
+    /// hit test calls this every frame while an army is selected.</summary>
+    SpriteRenderer VisualForHitTest()
+    {
+        if (clickVisual != null && clickVisual.enabled && clickVisual.sprite != null)
+            return clickVisual;
+        clickVisual = FindLargestClickVisual();
+        return clickVisual;
+    }
+
+    SpriteRenderer FindLargestClickVisual()
+    {
+        SpriteRenderer best = null;
+        float bestArea = -1f;
+        var renderers = GetComponentsInChildren<SpriteRenderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            var sr = renderers[i];
+            if (sr == null || !sr.enabled || sr.sprite == null) continue;
+            if (!sr.gameObject.activeInHierarchy) continue;
+            if (sr.GetComponentInParent<HealthBar>() != null) continue;
+            var size = sr.bounds.size;
+            float area = size.x * size.y;
+            if (area > bestArea) { bestArea = area; best = sr; }
+        }
+        return best;
+    }
+
+    /// <summary>True when a worker at <paramref name="from"/> has a walkable approach
+    /// cell beside this building's footprint. Feedback only; the actual repair order
+    /// still runs its normal retry loop.</summary>
+    public static bool IsApproachableFrom(Vector3 from, Building building)
+    {
+        if (ReferenceEquals(building, null) || !building.IsAlive || building.IsUnderConstruction)
+            return false;
+        var grid = MapGrid.Instance;
+        if (grid == null) return true;
+
+        var start = grid.ResolveWalkableStart(grid.WorldToCell(from));
+        if (!start.HasValue) return false;
+        int region = grid.Region(start.Value);
+        for (int i = 0; i < building.Cells.Count; i++)
+            if (grid.NearestWalkableWithin(start.Value, building.Cells[i], 4, region, 1.6f).HasValue)
+                return true;
         return false;
     }
 

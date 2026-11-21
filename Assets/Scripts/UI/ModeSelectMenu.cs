@@ -26,6 +26,11 @@ public class ModeSelectMenu : MonoBehaviour
         if (versusButton != null) versusButton.interactable = false;
     }
 
+    void Update()
+    {
+        if (Input.GetKeyDown(KeyCode.Escape)) BackToMain();
+    }
+
     public void StartHuman()
     {
         LoadingScreen.Load(gameScene);
